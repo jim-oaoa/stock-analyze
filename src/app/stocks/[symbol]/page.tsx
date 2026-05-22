@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { ValuationGrid } from "@/components/grid/ValuationGrid";
+import { AutoImport } from "@/components/stocks/AutoImport";
 import type { Metadata } from "next";
 import type { ApiFinancialRow, QuarterLabel } from "@/lib/types";
 
@@ -53,7 +54,11 @@ export default async function StockPage({ params }: Props) {
       </div>
 
       <div className="min-h-0 flex-1">
-        <ValuationGrid stockId={stock.id} initialData={initialData} />
+        {stock.quarters.length === 0 ? (
+          <AutoImport stockId={stock.id} symbol={stock.symbol} />
+        ) : (
+          <ValuationGrid stockId={stock.id} initialData={initialData} />
+        )}
       </div>
     </main>
   );
