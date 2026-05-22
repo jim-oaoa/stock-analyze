@@ -61,7 +61,8 @@ describe("computeQuarterFields", () => {
       previousNetValue: 20.0,
     });
     expect(result.netValue).toBeCloseTo(22.0);
-    expect(result.adjustedNetValue).toBeNull();
+    // otherEquityItems null → treated as 0, so adjustedNetValue = netValue
+    expect(result.adjustedNetValue).toBeCloseTo(22.0);
   });
 });
 

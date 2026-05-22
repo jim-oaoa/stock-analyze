@@ -47,9 +47,10 @@ export function computeQuarterFields(raw: RawQuarterData): ComputedQuarterData {
   const { eps, oci, other, dividends, otherEquityItems, previousNetValue } =
     raw;
 
+  // eps is the only required field; oci/other/dividends default to 0 when null
   const netValueChange =
-    eps !== null && oci !== null && other !== null && dividends !== null
-      ? eps + oci + other + dividends
+    eps !== null
+      ? eps + (oci ?? 0) + (other ?? 0) + (dividends ?? 0)
       : null;
 
   const netValue =
@@ -57,9 +58,10 @@ export function computeQuarterFields(raw: RawQuarterData): ComputedQuarterData {
       ? previousNetValue + netValueChange
       : null;
 
+  // otherEquityItems defaults to 0 when null (adjustedNetValue = netValue)
   const adjustedNetValue =
-    netValue !== null && otherEquityItems !== null
-      ? netValue - otherEquityItems
+    netValue !== null
+      ? netValue - (otherEquityItems ?? 0)
       : null;
 
   return { netValueChange, netValue, adjustedNetValue, adjustedROE: null };

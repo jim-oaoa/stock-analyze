@@ -22,47 +22,83 @@ export async function POST(_req: NextRequest, { params }: Params) {
     orderBy: [{ year: "asc" }, { quarter: "asc" }],
   });
 
-  const updates: Array<{ year: number; previousNetValue: number }> = [];
-
-  // Group by year, find Q4 rows with enough data to compute netValue
+  // Group by year, sort years ascending so cascade flows 2022→2023→2024
   const byYear = new Map<number, FinancialQuarter[]>();
   for (const q of quarters) {
     const list = byYear.get(q.year) ?? [];
     list.push(q);
     byYear.set(q.year, list);
   }
+  const sortedYears = [...byYear.keys()].sort((a, b) => a - b);
 
-  for (const [year, rows] of byYear.entries()) {
-    const q4 = rows.find((r) => r.quarter === "Q4");
-    if (!q4) continue;
+  // Track propagated previousNetValue per year (updated as we go)
+  const propagatedQ1: Map<number, number> = new Map();
 
-    const { eps, oci, other, dividends, previousNetValue } = q4;
-    if (
-      eps === null ||
-      oci === null ||
-      other === null ||
-      dividends === null ||
-      previousNetValue === null
-    ) {
-      continue;
+  let propagated = 0;
+
+  for (const year of sortedYears) {
+    const rows = byYear.get(year) ?? [];
+    const sorted = [...rows].sort((a, b) => a.quarter.localeCompare(b.quarter));
+
+    // For Q1: use propagated value (from prior year's cascade) if available, else DB value
+    const propagatedPrev = propagatedQ1.get(year);
+
+    let runningNetValue: number | null = null;
+
+    for (const row of sorted) {
+      const { eps, oci, other, dividends } = row;
+
+      let prevNV: number | null;
+      if (row.quarter === "Q1") {
+        prevNV =
+          propagatedPrev !== undefined
+            ? propagatedPrev
+            : row.previousNetValue !== null
+              ? Number(row.previousNetValue)
+              : null;
+
+        // If we have a propagated value that differs from DB, write it
+        if (
+          propagatedPrev !== undefined &&
+          row.previousNetValue === null
+        ) {
+          await prisma.financialQuarter.update({
+            where: { stockId_year_quarter: { stockId, year, quarter: "Q1" } },
+            data: { previousNetValue: propagatedPrev },
+          });
+        }
+      } else {
+        prevNV = runningNetValue;
+      }
+
+      if (prevNV === null || eps === null) {
+        runningNetValue = null;
+        continue;
+      }
+
+      const netValueChange =
+        Number(eps) +
+        (oci !== null ? Number(oci) : 0) +
+        (other !== null ? Number(other) : 0) +
+        (dividends !== null ? Number(dividends) : 0);
+
+      runningNetValue = prevNV + netValueChange;
     }
 
-    const netValueChange =
-      Number(eps) + Number(oci) + Number(other) + Number(dividends);
-    const netValue = Number(previousNetValue) + netValueChange;
+    // Propagate end-of-year netValue → next year's Q1 previousNetValue
+    if (runningNetValue !== null) {
+      const nextYear = year + 1;
+      propagatedQ1.set(nextYear, runningNetValue);
 
-    updates.push({ year: year + 1, previousNetValue: netValue });
-  }
-
-  // Upsert Q1 previousNetValue for the following year
-  let propagated = 0;
-  for (const { year, previousNetValue } of updates) {
-    await prisma.financialQuarter.upsert({
-      where: { stockId_year_quarter: { stockId, year, quarter: "Q1" } },
-      create: { stockId, year, quarter: "Q1", previousNetValue },
-      update: { previousNetValue },
-    });
-    propagated++;
+      await prisma.financialQuarter.upsert({
+        where: {
+          stockId_year_quarter: { stockId, year: nextYear, quarter: "Q1" },
+        },
+        create: { stockId, year: nextYear, quarter: "Q1", previousNetValue: runningNetValue },
+        update: { previousNetValue: runningNetValue },
+      });
+      propagated++;
+    }
   }
 
   return NextResponse.json({ propagated });
