@@ -1,0 +1,93 @@
+name: Quarterly MOPS Scraper
+
+on:
+  # 每季末自動觸發：1月/4月/7月/10月 的第15日 UTC 02:00
+  schedule:
+    - cron: "0 2 15 1,4,7,10 *"
+  # 支援手動觸發（可指定參數）
+  workflow_dispatch:
+    inputs:
+      symbol:
+        description: "股票代碼（留空則使用 STOCK_SYMBOLS secret）"
+        required: false
+        default: ""
+      year:
+        description: "西元年份，例如 2024"
+        required: false
+        default: ""
+      quarter:
+        description: "季別：Q1 / Q2 / Q3 / Q4（留空則抓全年）"
+        required: false
+        default: ""
+
+jobs:
+  scrape:
+    name: Scrape MOPS financial data
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: scripts/requirements.txt
+
+      - name: Install Python dependencies
+        run: pip install -r scripts/requirements.txt
+
+      - name: Install Playwright browsers
+        run: playwright install chromium --with-deps
+
+      - name: Determine target year
+        id: vars
+        run: |
+          if [ -n "${{ github.event.inputs.year }}" ]; then
+            echo "year=${{ github.event.inputs.year }}" >> $GITHUB_OUTPUT
+          else
+            echo "year=$(date +%Y)" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run scraper (manual single symbol)
+        if: github.event.inputs.symbol != ''
+        env:
+          API_URL: ${{ secrets.NEXT_PUBLIC_APP_URL }}
+        run: |
+          QUARTER_ARG=""
+          if [ -n "${{ github.event.inputs.quarter }}" ]; then
+            QUARTER_ARG="--quarter ${{ github.event.inputs.quarter }}"
+          fi
+          python scripts/fetch_financial_data.py \
+            --symbol "${{ github.event.inputs.symbol }}" \
+            --year "${{ steps.vars.outputs.year }}" \
+            $QUARTER_ARG \
+            --api-url "${API_URL:-http://localhost:3000}"
+
+      - name: Run scraper (batch from STOCK_SYMBOLS secret)
+        if: github.event.inputs.symbol == ''
+        env:
+          API_URL: ${{ secrets.NEXT_PUBLIC_APP_URL }}
+          STOCK_SYMBOLS: ${{ secrets.STOCK_SYMBOLS }}
+        run: |
+          if [ -z "$STOCK_SYMBOLS" ]; then
+            echo "STOCK_SYMBOLS secret is empty, nothing to scrape."
+            exit 0
+          fi
+          # STOCK_SYMBOLS 格式: "3231,2330,2454"（逗號分隔）
+          IFS=',' read -ra SYMBOLS <<< "$STOCK_SYMBOLS"
+          YEAR="${{ steps.vars.outputs.year }}"
+          FAILED=0
+          for SYM in "${SYMBOLS[@]}"; do
+            SYM=$(echo "$SYM" | tr -d ' ')
+            echo "── Scraping $SYM $YEAR ──"
+            python scripts/fetch_financial_data.py \
+              --symbol "$SYM" \
+              --year "$YEAR" \
+              --api-url "${API_URL:-http://localhost:3000}" || FAILED=$((FAILED + 1))
+          done
+          if [ "$FAILED" -gt 0 ]; then
+            echo "::warning::$FAILED symbol(s) failed to scrape."
+            exit 1
+          fi
