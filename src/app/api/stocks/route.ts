@@ -31,6 +31,22 @@ export async function POST(req: NextRequest) {
       { status: 400 },
     );
   }
-  const stock = await prisma.stock.create({ data: parsed.data });
-  return NextResponse.json(stock, { status: 201 });
+  try {
+    const stock = await prisma.stock.create({ data: parsed.data });
+    return NextResponse.json(stock, { status: 201 });
+  } catch (err: unknown) {
+    // Prisma unique constraint violation (P2002)
+    if (
+      typeof err === "object" &&
+      err !== null &&
+      "code" in err &&
+      (err as { code: string }).code === "P2002"
+    ) {
+      return NextResponse.json(
+        { error: "股票代碼已存在" },
+        { status: 409 },
+      );
+    }
+    throw err;
+  }
 }
