@@ -5,6 +5,18 @@
 * **溝通語系**: 繁體中文 (Traditional Chinese)，技術名詞可保留英文（如 App Router, Zustand, Hook, Schema）。
 * **回應風格**: 精準、直接、具備架構思維。不需過多無意義的客套，程式碼品質與架構優化為第一優先。
 
+## 🌿 Git 分支規範 (Branch Naming)
+
+* `main` — 正式分支，受保護，需 PR + 1 review 才能合併
+* `feature/<topic>` — 新功能開發，例如 `feature/python-scraper`
+* `fix/<topic>` — Bug 修正，例如 `fix/roe-cascade`
+* `chore/<topic>` — 工具、設定、文件，例如 `chore/update-deps`
+
+CI 在每個 PR 自動執行：ESLint → TypeScript strict check → Next.js build。
+CD 在合併 main 後自動執行：prisma migrate deploy → Vercel production deploy。
+
+---
+
 ## 🛠️ 技術堆疊 (Tech Stack)
 * **Frontend Framework**: Next.js 14+ (App Router, src layout)
 * **Language**: TypeScript (Strict Mode), Python 3.10+
