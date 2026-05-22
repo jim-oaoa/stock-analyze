@@ -1,0 +1,75 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum Quarter {
+  Q1
+  Q2
+  Q3
+  Q4
+}
+
+// ─── User (NextAuth-ready, reserved for v2) ───────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@map("users")
+}
+
+// ─── Stock ────────────────────────────────────────────────────────────────────
+
+model Stock {
+  id        String             @id @default(cuid())
+  symbol    String             @unique
+  name      String
+  industry  String?
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+
+  quarters  FinancialQuarter[]
+
+  @@index([symbol])
+  @@index([industry])
+  @@map("stocks")
+}
+
+// ─── FinancialQuarter ─────────────────────────────────────────────────────────
+
+model FinancialQuarter {
+  id               String   @id @default(cuid())
+  stockId          String
+  year             Int
+  quarter          Quarter
+
+  // Raw inputs — all nullable to support incremental data entry
+  eps              Decimal? @db.Decimal(10, 4)
+  oci              Decimal? @db.Decimal(10, 4)
+  other            Decimal? @db.Decimal(10, 4)
+  dividends        Decimal? @db.Decimal(10, 4)
+  otherEquityItems Decimal? @db.Decimal(10, 4)
+  previousNetValue Decimal? @db.Decimal(10, 4)
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  stock            Stock    @relation(fields: [stockId], references: [id], onDelete: Cascade)
+
+  @@unique([stockId, year, quarter])
+  @@index([stockId, year])
+  @@index([year, quarter])
+  @@map("financial_quarters")
+}

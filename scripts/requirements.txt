@@ -1,0 +1,8 @@
+# Python linting & formatting (dev)
+black==26.5.1
+flake8==7.3.0
+ruff==0.15.14
+
+# Phase 5: Taiwan stock data scraper
+playwright>=1.40.0
+requests>=2.31.0
